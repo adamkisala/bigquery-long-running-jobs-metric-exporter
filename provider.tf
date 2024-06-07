@@ -14,15 +14,12 @@
  limitations under the License.
  */
 
-// Configure Google Provider
-provider "google" {
-}
-
 // Specify Required Providers
 terraform {
   required_providers {
     google = {
-      version = "4.78.0"
+      version = "~> 5.0"
+      source  = "hashicorp/google"
     }
   }
 }
