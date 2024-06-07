@@ -26,12 +26,6 @@ resource "google_service_account" "long_running_jobs" {
   project      = var.workflow_deployment_project
 }
 
-resource "google_project_iam_member" "long_running_jobs_logging" {
-  role    = "roles/logging.logWriter"
-  member  = "serviceAccount:${google_service_account.long_running_jobs.email}"
-  project = var.workflow_deployment_project
-}
-
 resource "google_workflows_workflow" "long_running_jobs" {
 
   depends_on = [google_project_service.workflows_api]
