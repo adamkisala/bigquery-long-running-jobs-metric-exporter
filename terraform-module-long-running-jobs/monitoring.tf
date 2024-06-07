@@ -61,15 +61,3 @@ resource "google_monitoring_metric_descriptor" "bigquery_long_running_jobs" {
 
 }
 
-resource "google_project_iam_member" "long_running_jobs_metrics_writer" {
-
-  # If we do not have a master_metrics_project set, then the metrics will be shipped to each project we are configured to
-  # monitor. So we need permission to write metrics in every projects.
-  # If we have a master_metrics_project set, then metrics will only go to this project so we just add the IAM role there
-  count = var.master_metrics_project == "" ? length(keys(var.monitored_projects_and_regions)) : 1
-
-  role    = "roles/monitoring.metricWriter"
-  member  = "serviceAccount:${google_service_account.long_running_jobs.email}"
-  project = var.master_metrics_project == "" ? keys(var.monitored_projects_and_regions)[count.index] : var.master_metrics_project
-
-}

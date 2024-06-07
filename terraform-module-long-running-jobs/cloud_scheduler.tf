@@ -21,12 +21,6 @@ resource "google_service_account" "long_running_jobs_workflow_invoker" {
   project      = var.workflow_deployment_project
 }
 
-resource "google_project_iam_member" "long_running_jobs_workflow_invoker" {
-  role    = "roles/workflows.invoker"
-  member  = "serviceAccount:${google_service_account.long_running_jobs_workflow_invoker.email}"
-  project = var.workflow_deployment_project
-}
-
 resource "google_project_service" "cloud_scheduler" {
   service            = "cloudscheduler.googleapis.com"
   project            = var.workflow_deployment_project
