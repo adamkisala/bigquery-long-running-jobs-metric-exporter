@@ -42,6 +42,6 @@ resource "google_workflows_workflow" "long_running_jobs" {
   service_account = google_service_account.long_running_jobs.id
   project         = var.workflow_deployment_project
 
-  source_contents = file("${path.module}/workflow/long-running-jobs.yaml")
+  source_contents = file("${path.module}/../workflow/long-running-jobs.yaml")
 
 }
