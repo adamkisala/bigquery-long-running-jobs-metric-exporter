@@ -6,6 +6,8 @@ This repository is a fork of the original [bigquery-long-running-jobs-metric-exp
 
 This fork removes depracated call to empty providers and updates the google provider to version 5.0.
 
+The iam for jobUser and resourceViewer has been removed from the module and should be added manually to the project.
+
 ## Overview
 
 This repository contains a Google Cloud Workflow that monitors and exports a custom metric into Google Cloud Monitoring for "long running jobs". The definition of a long running job is configurable. A job is defined as long running if it is still running at the point the Workflow executes, and it has been running for longer than the defined threshold.
