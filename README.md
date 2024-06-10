@@ -6,7 +6,24 @@ This repository is a fork of the original [bigquery-long-running-jobs-metric-exp
 
 This fork removes depracated call to empty providers and updates the google provider to version 5.0.
 
-The iam for jobUser and resourceViewer has been removed from the module and should be added manually to the project.
+The iam section has been removed from the module and should be added manually to the project - as original one assumes
+quite big priviliges to be granted to the service account that manages TF resources (if projects are managed by
+different workflows and SA then it can be problematic).
+
+If running with main project you need to add the following permissions to the service account that runs the workflow:
+```
+roles/bigquery.jobUser serviceAccount:long-running-jobs-workflow@mi-shared-k8s-55ac.iam.gserviceaccount.com
+roles/logging.logWriter serviceAccount:long-running-jobs-workflow@mi-shared-k8s-55ac.iam.gserviceaccount.com
+roles/monitoring.metricWriter serviceAccount:long-running-jobs-workflow@mi-shared-k8s-55ac.iam.gserviceaccount.com
+
+roles/workflows.invoker serviceAccount:long-running-jobs-wf-invoker@mi-shared-k8s-55ac.iam.gserviceaccount.com
+```
+
+Then for each monitored project you need to grant the following permissions:
+```
+roles/bigquery.resourceViewer serviceAccount:long-running-jobs-workflow@mi-shared-k8s-55ac.iam.gserviceaccount.com
+```
+
 
 ## Overview
 
