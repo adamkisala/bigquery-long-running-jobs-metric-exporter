@@ -52,3 +52,9 @@ variable "job_duration_alert_threshold_minutes" {
   type        = number
   default     = 30
 }
+
+variable "look_behind_period_days" {
+  description = "How many days to look behind for stale queries - limits costs of unnecessary data to scan (days)"
+  type        = number
+  default     = 7
+}
