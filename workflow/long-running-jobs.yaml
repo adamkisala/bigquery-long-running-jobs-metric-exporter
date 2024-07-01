@@ -17,24 +17,24 @@ main:
   # Args is a JSON payload with keys containing the project name, and a list of regions within that project to query
   # for long running jobs. For example:
   #
-# {
-#   "config": {
-#     "masterMetricProject": null,
-#     "masterQueryProject": null,
-#     "jobDurationAlertThreshold": "30"
-#     "lookBehindPeriod": "7"
-#   },
-#   "targets": {
-#     "bigquery-project-1": [
-#       "US",
-#       "EU",
-#       "europe-west2"
-#     ],
-#     "bigquery-project-2": [
-#       "europe-west2"
-#     ]
-#   }
-# }
+  # {
+  #   "config": {
+  #     "masterMetricProject": null,
+  #     "masterQueryProject": null,
+  #     "jobDurationAlertThreshold": "30"
+  #     "lookBehindPeriod": "7"
+  #   },
+  #   "targets": {
+  #     "bigquery-project-1": [
+  #       "US",
+  #       "EU",
+  #       "europe-west2"
+  #     ],
+  #     "bigquery-project-2": [
+  #       "europe-west2"
+  #     ]
+  #   }
+  # }
 
   params: [args]
 
@@ -45,90 +45,199 @@ main:
     - iterateOverProjects:
         parallel:
           for:
-              value: project
-              in: ${keys(args.targets)}
+            value: project
+            in: ${keys(args.targets)}
 
-              steps:
+            steps:
 
-                # By default, each query will be performed in the project that is being queried, and the metrics will be written to that same project
-                # However in some cases, there may be a desire to perform all of the queries from a single project, or write all of the metrics to a
-                # single project, so we determine that here.
-                - assignVariables:
-                    assign:
-                      - queryProject: ${default(args.config.masterQueryProject, project)}
-                      - metricProject: ${default(args.config.masterMetricProject, project)}
+              # By default, each query will be performed in the project that is being queried, and the metrics will be written to that same project
+              # However in some cases, there may be a desire to perform all of the queries from a single project, or write all of the metrics to a
+              # single project, so we determine that here.
+              - assignVariables:
+                  assign:
+                    - queryProject: ${default(args.config.masterQueryProject, project)}
+                    - metricProject: ${default(args.config.masterMetricProject, project)}
 
-                # Perform a parallel iteration over each of the regions within the given project
-                - iterateOverRegions:
-                    parallel:
-                      for:
-                          value: region
-                          in: ${map.get(args.targets, project)}
+              # Perform a parallel iteration over each of the regions within the given project
+              - iterateOverRegions:
+                  parallel:
+                    for:
+                      value: region
+                      in: ${map.get(args.targets, project)}
 
-                          steps:
-                            # Log the project and the region we are targeting
-                            - logStart:
-                                call: sys.log
-                                args:
-                                  data: ${"Processing project " + project + " region " + region + ". Running query from project " + queryProject + " and writing metrics to project " + metricProject}
-                            # Run the query in BigQuery to determine any long running jobs
-                            - startQuery:
-                                call: googleapis.bigquery.v2.jobs.insert
-                                args:
-                                  # By default the query will run in the project we are querying for long running jobs in, but if
-                                  # the MASTER_QUERY_PROJECT environment variable is set it will be a central project
-                                  projectId: ${queryProject}
-                                  body:
-                                    configuration:
-                                      query:
-                                        useLegacySql: false
-                                        query: ${"SELECT job_id FROM `" + project + "`.`region-" + region + "`.INFORMATION_SCHEMA.JOBS_BY_PROJECT WHERE state IN (\"RUNNING\", \"PENDING\") AND creation_time <= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL " + args.config.jobDurationAlertThreshold + " MINUTE) and creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL " + args.config.lookBehindPeriod + " DAY)"}
-                                        location: ${region}
-                                result: query
+                      steps:
+                        # Log the project and the region we are targeting
+                        - logStart:
+                            call: sys.log
+                            args:
+                              data: ${"Processing project " + project + " region " + region + ". Running query from project " + queryProject + " and writing metrics to project " + metricProject}
+                        # Run the query in BigQuery to determine any long running jobs
+                        - startQuery:
+                            call: googleapis.bigquery.v2.jobs.insert
+                            args:
+                              # By default the query will run in the project we are querying for long running jobs in, but if
+                              # the MASTER_QUERY_PROJECT environment variable is set it will be a central project
+                              projectId: ${queryProject}
+                              body:
+                                configuration:
+                                  query:
+                                    useLegacySql: false
+                                    query: ${"SELECT job_id, labels FROM `" + project + "`.`region-" + region + "`.INFORMATION_SCHEMA.JOBS_BY_PROJECT WHERE state IN (\"RUNNING\",\"PENDING\") AND creation_time <= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL " + args.config.jobDurationAlertThreshold + " MINUTE) and creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL " + args.config.lookBehindPeriod + " DAY) LIMIT 2"}
+                                    location: ${region}
+                            result: query
+
                             # Get the results from the query
-                            - getResults:
-                                call: googleapis.bigquery.v2.jobs.getQueryResults
-                                args:
-                                  # By default the query will run in the project we are querying for long running jobs in, but if
-                                  # the MASTER_QUERY_PROJECT environment variable is set it will be a central project
-                                  projectId: ${queryProject}
-                                  jobId: ${query.jobReference.jobId}
-                                  # We don't need any of the actual results, we just want to get the job so we can access the totalRows property
-                                  # which we use for the metric. Setting this also keeps the variables small to avoid the variable limit
-                                  maxResults: 0
-                                  location: ${region}
-                                result: results
-                            # Write the metric to Google Cloud Monitoring. We breakdown the metrics with labels containing the project and the region
-                            # we intentionally do not label with things like Job ID, because then we need state tracking for when that job eventually finishes.
-                            # For now, all we want is a count of the long running jobs, which we can then use to trigger a manual investigation
-                            - writeMetric:
-                                call: http.post
-                                args:
-                                  # By default the query will run in the project we are querying for long running jobs in, but if
-                                  # the MASTER_METRIC_PROJECT environment variable is set it will be a central project
-                                  url: ${"https://monitoring.googleapis.com/v3/projects/" + metricProject + "/timeSeries"}
-                                  auth:
-                                      type: OAuth2
-                                      scopes: https://www.googleapis.com/auth/monitoring.write
-                                  headers:
-                                      "Content-Type": "application/json"
-                                  body:
-                                    timeSeries:
-                                      - metric:
-                                          type: "custom.googleapis.com/bigquery/long_running_jobs"
-                                          labels:
-                                            region: ${region}
-                                            project: ${project}
-                                        resource:
-                                          type: "global"
-                                        metricKind: "GAUGE"
-                                        valueType: "INT64"
-                                        points:
-                                          - interval:
-                                              endTime: ${time.format(sys.now())}
-                                            value:
-                                              int64Value: ${results.totalRows}
-                            - logFinish:
-                                call: sys.log
-                                args:
-                                  data: ${"Finished exporting metrics for project " + project + " region " + region}
+                        - getResults:
+                            call: googleapis.bigquery.v2.jobs.getQueryResults
+                            args:
+                              # By default the query will run in the project we are querying for long running jobs in, but if
+                              # the MASTER_QUERY_PROJECT environment variable is set it will be a central project
+                              projectId: ${queryProject}
+                              jobId: ${query.jobReference.jobId}
+                              maxResults: 1000
+                              location: ${region}
+                            result: results
+
+                        - checkResults:
+                            switch:
+                              - condition: ${not("rows" in results)}
+                                next: setResultsTo0
+                              - condition:  ${"rows" in results}
+                                next: setQueryResults
+
+                        - setResultsTo0:
+                            steps:
+                              - setJobTypes:
+                                  assign:
+                                    - jobTypes: ["incremental","full-refresh"]
+                              - setMetricsTo0:
+                                  for:
+                                    value: jobType
+                                    in: ${jobTypes}
+                                    steps:
+                                      - setMetric:
+                                          call: http.post
+                                          args:
+                                            url: ${"https://monitoring.googleapis.com/v3/projects/" + metricProject + "/timeSeries"}
+                                            auth:
+                                              type: OAuth2
+                                              scopes: https://www.googleapis.com/auth/monitoring.write
+                                            headers:
+                                              "Content-Type": "application/json"
+                                            body:
+                                              timeSeries:
+                                                - metric:
+                                                    type: "custom.googleapis.com/bigquery/long_running_jobs"
+                                                    labels:
+                                                      region: ${region}
+                                                      project: ${project}
+                                                      job_type: ${jobType}
+                                                  resource:
+                                                    type: "global"
+                                                  metricKind: "GAUGE"
+                                                  valueType: "INT64"
+                                                  points:
+                                                    - interval:
+                                                        endTime: ${time.format(sys.now())}
+                                                      value:
+                                                        int64Value: 0
+                                  next: logFinish
+                        - setQueryResults:
+                            steps:
+                              - setEmptyJobTypesSlice:
+                                  assign:
+                                    - jobTypesMap: {}
+                              - logResults:
+                                  call: sys.log
+                                  args:
+                                    data: ${results}
+                              - iterateOverJobResults:
+                                  for:
+                                    value: row
+                                    in: ${results.rows}
+                                    steps:
+                                      - assignBools:
+                                          assign:
+                                            - fInRow: ${"f" in row}
+                                            - lenFRow2: ${len(row.f) == 2}
+                                      - findJobs:
+                                          switch:
+                                            - condition: ${fInRow and lenFRow2}
+                                              steps:
+                                                - searchJobLabel:
+                                                    switch:
+                                                      - condition: ${"v" in row.f[1]}
+                                                        steps:
+                                                          - findJobInArray:
+                                                              for:
+                                                                value: label
+                                                                in: ${row.f[1].v}
+                                                                steps:
+                                                                  - labelsValues:
+                                                                      assign:
+                                                                        - labelValuesArray: ${default(map.get(label, ["v","f"]), false)}
+                                                                  - labelVAndFLenght:
+                                                                      switch:
+                                                                        - condition: ${len(labelValuesArray) == 2}
+                                                                          assign:
+                                                                            - labelKey: ${labelValuesArray[0].v}
+                                                                            - labelValue: ${labelValuesArray[1].v}
+                                                                        - condition: true
+                                                                          next: continue
+                                                                  - findJobType:
+                                                                      switch:
+                                                                        - condition: ${labelKey == "job"}
+                                                                          steps:
+                                                                            - checkMapKey:
+                                                                                assign:
+                                                                                  - mapHasKey: ${labelValue in jobTypesMap}
+                                                                            - assignValuesToMap:
+                                                                                switch:
+                                                                                  - condition: ${mapHasKey}
+                                                                                    assign:
+                                                                                      - jobTypesMap[labelValue]: ${map.get(jobTypesMap,labelValue) +1}
+                                                                                  - condition: ${not(mapHasKey)}
+                                                                                    assign:
+                                                                                      - jobTypesMap[labelValue]: 1
+                              - logJobTypesMapResults:
+                                  call: sys.log
+                                  args:
+                                    data: ${jobTypesMap}
+                              - setNon0Metrics:
+                                  for:
+                                    value: key
+                                    in: ${keys(jobTypesMap)}
+                                    steps:
+                                      - setNon0Metric:
+                                          call: http.post
+                                          args:
+                                            url: ${"https://monitoring.googleapis.com/v3/projects/" + metricProject + "/timeSeries"}
+                                            auth:
+                                              type: OAuth2
+                                              scopes: https://www.googleapis.com/auth/monitoring.write
+                                            headers:
+                                              "Content-Type": "application/json"
+                                            body:
+                                              timeSeries:
+                                                - metric:
+                                                    type: "custom.googleapis.com/bigquery/long_running_jobs"
+                                                    labels:
+                                                      region: ${region}
+                                                      project: ${project}
+                                                      job_type: ${key}
+                                                  resource:
+                                                    type: "global"
+                                                  metricKind: "GAUGE"
+                                                  valueType: "INT64"
+                                                  points:
+                                                    - interval:
+                                                        endTime: ${time.format(sys.now())}
+                                                      value:
+                                                        int64Value: ${jobTypesMap[key]}
+                                  next: logFinish
+
+                        - logFinish:
+                            call: sys.log
+                            args:
+                              data: ${"Finished exporting metrics for project " + project + " region " + region}
+                            next: continue
