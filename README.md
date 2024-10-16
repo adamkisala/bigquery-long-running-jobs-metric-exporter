@@ -12,16 +12,16 @@ different workflows and SA then it can be problematic).
 
 If running with main project you need to add the following permissions to the service account that runs the workflow:
 ```
-roles/bigquery.jobUser serviceAccount:long-running-jobs-workflow@mi-shared-k8s-55ac.iam.gserviceaccount.com
-roles/logging.logWriter serviceAccount:long-running-jobs-workflow@mi-shared-k8s-55ac.iam.gserviceaccount.com
-roles/monitoring.metricWriter serviceAccount:long-running-jobs-workflow@mi-shared-k8s-55ac.iam.gserviceaccount.com
+roles/bigquery.jobUser serviceAccount:long-running-jobs-workflow@your-project.iam.gserviceaccount.com
+roles/logging.logWriter serviceAccount:long-running-jobs-workflow@your-project.iam.gserviceaccount.com
+roles/monitoring.metricWriter serviceAccount:long-running-jobs-workflow@your-project.iam.gserviceaccount.com
 
-roles/workflows.invoker serviceAccount:long-running-jobs-wf-invoker@mi-shared-k8s-55ac.iam.gserviceaccount.com
+roles/workflows.invoker serviceAccount:long-running-jobs-wf-invoker@your-project.iam.gserviceaccount.com
 ```
 
 Then for each monitored project you need to grant the following permissions:
 ```
-roles/bigquery.resourceViewer serviceAccount:long-running-jobs-workflow@mi-shared-k8s-55ac.iam.gserviceaccount.com
+roles/bigquery.resourceViewer serviceAccount:long-running-jobs-workflow@your-project.iam.gserviceaccount.com
 ```
 
 
