@@ -54,6 +54,12 @@ resource "google_monitoring_metric_descriptor" "bigquery_long_running_jobs" {
   }
 
   labels {
+    key         = "job_type"
+    value_type  = "STRING"
+    description = "The type of the job"
+  }
+
+  labels {
     key         = "project"
     value_type  = "STRING"
     description = "The project ID of the job"
